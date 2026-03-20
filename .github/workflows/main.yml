@@ -249,13 +249,18 @@ jobs:
           cat > luci_ipk/data/usr/share/rpcd/ucode/luci.${SERVICE} << RPCEOF
           #!/usr/bin/ucode
           'use strict';
+          import { cursor } from 'uci';
 
           const SERVICE = '${SERVICE}';
 
           const methods = {
               get_status: {
                   call: function() {
-                      const ret = system('pgrep -f "' + SERVICE + '" >/dev/null 2>&1');
+                      const uci = cursor();
+                      uci.load(SERVICE);
+                      const start_cmd = uci.get(SERVICE, 'config', 'start_cmd') || '';
+                      const bin = split(start_cmd, ' ')[0] || SERVICE;
+                      const ret = system('pgrep -f ' + bin + ' >/dev/null 2>&1');
                       return { running: (ret === 0) };
                   }
               },
