@@ -3,10 +3,6 @@ name: Build IPK Package
 on:
   workflow_dispatch:
     inputs:
-
-permissions:
-  contents: write
-
       package_type:
         description: '打包类型'
         required: true
@@ -29,6 +25,9 @@ permissions:
         description: '服务名称（仅打包 LuCI 时需要，例如：alist，生成 luci-app-alist）'
         required: false
         type: string
+
+permissions:
+  contents: write
 
 jobs:
   build:
