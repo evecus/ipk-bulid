@@ -144,9 +144,10 @@ jobs:
           cd ipk_bin
           tar --numeric-owner --group=0 --owner=0 -czf ../control.tar.gz -C control .
           tar --numeric-owner --group=0 --owner=0 -czf ../data.tar.gz -C data .
+          tar --numeric-owner --group=0 --owner=0 -czf "../$IPK_NAME" \
+            --transform 's|ipk_bin/||' \
+            ipk_bin/debian-binary ../control.tar.gz ../data.tar.gz
           cd ..
-          tar --numeric-owner --group=0 --owner=0 -czf "$IPK_NAME" \
-            debian-binary control.tar.gz data.tar.gz
 
           echo "ipk_name=$IPK_NAME" >> $GITHUB_OUTPUT
           echo "Built: $IPK_NAME"
@@ -436,9 +437,10 @@ jobs:
           cd luci_ipk
           tar --numeric-owner --group=0 --owner=0 -czf ../luci_control.tar.gz -C control .
           tar --numeric-owner --group=0 --owner=0 -czf ../luci_data.tar.gz -C data .
+          tar --numeric-owner --group=0 --owner=0 -czf "../$LUCI_IPK" \
+            --transform 's|luci_ipk/||' \
+            luci_ipk/debian-binary ../luci_control.tar.gz ../luci_data.tar.gz
           cd ..
-          tar --numeric-owner --group=0 --owner=0 -czf "$LUCI_IPK" \
-            luci_ipk/debian-binary luci_control.tar.gz luci_data.tar.gz
 
           echo "luci_ipk_name=$LUCI_IPK" >> $GITHUB_OUTPUT
           echo "Built: $LUCI_IPK"
