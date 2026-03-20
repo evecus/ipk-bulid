@@ -435,6 +435,8 @@ jobs:
           tar --numeric-owner --group=0 --owner=0 -czf luci_data.tar.gz -C luci_ipk/data .
           tar --numeric-owner --group=0 --owner=0 -czf "$LUCI_IPK" \
             --transform 's|luci_debian-binary|debian-binary|' \
+            --transform 's|luci_control\.tar\.gz|control.tar.gz|' \
+            --transform 's|luci_data\.tar\.gz|data.tar.gz|' \
             luci_debian-binary luci_control.tar.gz luci_data.tar.gz
 
           echo "luci_ipk_name=$LUCI_IPK" >> $GITHUB_OUTPUT
