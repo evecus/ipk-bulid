@@ -139,15 +139,12 @@ jobs:
           Description: ${BINARY_NAME} binary package
           EOF
 
-          echo "2.0" > ipk_bin/debian-binary
+          echo "2.0" > debian-binary
 
-          cd ipk_bin
-          tar --numeric-owner --group=0 --owner=0 -czf ../control.tar.gz -C control .
-          tar --numeric-owner --group=0 --owner=0 -czf ../data.tar.gz -C data .
-          tar --numeric-owner --group=0 --owner=0 -czf "../$IPK_NAME" \
-            --transform 's|ipk_bin/||' \
-            ipk_bin/debian-binary ../control.tar.gz ../data.tar.gz
-          cd ..
+          tar --numeric-owner --group=0 --owner=0 -czf control.tar.gz -C ipk_bin/control .
+          tar --numeric-owner --group=0 --owner=0 -czf data.tar.gz -C ipk_bin/data .
+          tar --numeric-owner --group=0 --owner=0 -czf "$IPK_NAME" \
+            debian-binary control.tar.gz data.tar.gz
 
           echo "ipk_name=$IPK_NAME" >> $GITHUB_OUTPUT
           echo "Built: $IPK_NAME"
@@ -432,15 +429,13 @@ jobs:
           Description: LuCI interface for ${SERVICE}
           CTRLEOF
 
-          echo "2.0" > luci_ipk/debian-binary
+          echo "2.0" > luci_debian-binary
 
-          cd luci_ipk
-          tar --numeric-owner --group=0 --owner=0 -czf ../luci_control.tar.gz -C control .
-          tar --numeric-owner --group=0 --owner=0 -czf ../luci_data.tar.gz -C data .
-          tar --numeric-owner --group=0 --owner=0 -czf "../$LUCI_IPK" \
-            --transform 's|luci_ipk/||' \
-            luci_ipk/debian-binary ../luci_control.tar.gz ../luci_data.tar.gz
-          cd ..
+          tar --numeric-owner --group=0 --owner=0 -czf luci_control.tar.gz -C luci_ipk/control .
+          tar --numeric-owner --group=0 --owner=0 -czf luci_data.tar.gz -C luci_ipk/data .
+          tar --numeric-owner --group=0 --owner=0 -czf "$LUCI_IPK" \
+            --transform 's|luci_debian-binary|debian-binary|' \
+            luci_debian-binary luci_control.tar.gz luci_data.tar.gz
 
           echo "luci_ipk_name=$LUCI_IPK" >> $GITHUB_OUTPUT
           echo "Built: $LUCI_IPK"
