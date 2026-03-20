@@ -50,25 +50,37 @@ jobs:
           echo "Downloading: $URL"
           curl -fsSL -o downloaded_file "$URL"
 
-          FILETYPE=$(file downloaded_file | tr '[:upper:]' '[:lower:]')
-          echo "File type: $FILETYPE"
-
           mkdir -p extracted
 
-          if echo "$FILETYPE" | grep -q 'zip'; then
+          # 用 magic bytes 判断文件类型，不依赖文件名
+          MAGIC=$(xxd -p -l 6 downloaded_file)
+          echo "Magic bytes: $MAGIC"
+
+          if echo "$MAGIC" | grep -q '^504b0304'; then
+            echo "Detected: ZIP"
             unzip -o downloaded_file -d extracted/
-          elif echo "$FILETYPE" | grep -q 'gzip'; then
+          elif echo "$MAGIC" | grep -q '^1f8b'; then
+            echo "Detected: GZIP"
+            # 先尝试 tar.gz
             if tar -tzf downloaded_file >/dev/null 2>&1; then
+              echo "Extracting as tar.gz"
               tar -xzf downloaded_file -C extracted/
             else
+              echo "Extracting as plain gz"
               gunzip -c downloaded_file > extracted/binary_file
             fi
-          elif echo "$FILETYPE" | grep -q 'xz\|lzma'; then
-            tar -xJf downloaded_file -C extracted/ 2>/dev/null || \
+          elif echo "$MAGIC" | grep -q '^fd377a585a00'; then
+            echo "Detected: XZ"
+            if tar -xJf downloaded_file -C extracted/ 2>/dev/null; then
+              echo "Extracted as tar.xz"
+            else
               xz -d -c downloaded_file > extracted/binary_file
-          elif echo "$FILETYPE" | grep -q 'executable\|elf'; then
+            fi
+          elif echo "$MAGIC" | grep -q '^7f454c46'; then
+            echo "Detected: ELF binary"
             cp downloaded_file extracted/binary_file
           else
+            echo "Unknown type, trying tar"
             tar -xf downloaded_file -C extracted/ 2>/dev/null || \
               cp downloaded_file extracted/binary_file
           fi
