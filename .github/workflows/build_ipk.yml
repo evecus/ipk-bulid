@@ -10,42 +10,34 @@ on:
         options:
           - '仅打包可执行文件'
           - '打包可执行文件 + LuCI 界面'
-
       file_url:
         description: '文件下载链接（支持 .tar.gz / .gz / .zip / 直链）'
         required: true
         type: string
-
       file_rename:
         description: '可执行文件重命名（留空则不修改）'
         required: false
         type: string
-
       binary_version:
         description: '核心 IPK 版本号（留空则随机生成，例如：1.0.0）'
         required: false
         type: string
-
       binary_ipk_name:
         description: '核心 IPK 名称（留空则使用可执行文件名）'
         required: false
         type: string
-
       service_name:
         description: '服务名称，仅打包 LuCI 时需要（例如：alist）'
         required: false
         type: string
-
       luci_version:
         description: 'LuCI IPK 版本号（留空则随机生成，例如：1.0-1）'
         required: false
         type: string
-
       luci_ipk_name:
         description: 'LuCI IPK 名称（留空则使用 luci-app-{服务名}）'
         required: false
         type: string
-
       release_notes:
         description: 'Release 说明（留空则自动生成）'
         required: false
@@ -57,26 +49,21 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
+
       - name: Validate inputs
         run: |
-          if [ "${{ inputs.package_type }}" = "打包可执行文件 + LuCI 界面" ]; then
-            if [ -z "${{ inputs.service_name }}" ]; then
-              echo "::error::打包 LuCI 时必须填写服务名称"
-              exit 1
-            fi
+          if [ "${{ inputs.package_type }}" = "打包可执行文件 + LuCI 界面" ] && [ -z "${{ inputs.service_name }}" ]; then
+            echo "::error::打包 LuCI 时必须填写服务名称"
+            exit 1
           fi
 
       - name: Download and extract binary
         id: binary
         run: |
-          URL="${{ inputs.file_url }}"
-          echo "Downloading: $URL"
-          curl -fsSL -o downloaded_file "$URL"
+          curl -fsSL -o downloaded_file "${{ inputs.file_url }}"
           mkdir -p extracted
           MAGIC=$(xxd -p -l 6 downloaded_file)
-          echo "Magic bytes: $MAGIC"
           if echo "$MAGIC" | grep -q '^504b0304'; then
             unzip -o downloaded_file -d extracted/
           elif echo "$MAGIC" | grep -q '^1f8b'; then
@@ -86,33 +73,19 @@ jobs:
               gunzip -c downloaded_file > extracted/binary_file
             fi
           elif echo "$MAGIC" | grep -q '^fd377a585a00'; then
-            if tar -xJf downloaded_file -C extracted/ 2>/dev/null; then
-              echo "Extracted as tar.xz"
-            else
-              xz -d -c downloaded_file > extracted/binary_file
-            fi
+            tar -xJf downloaded_file -C extracted/ 2>/dev/null || xz -d -c downloaded_file > extracted/binary_file
           elif echo "$MAGIC" | grep -q '^7f454c46'; then
             cp downloaded_file extracted/binary_file
           else
-            tar -xf downloaded_file -C extracted/ 2>/dev/null || \
-              cp downloaded_file extracted/binary_file
+            tar -xf downloaded_file -C extracted/ 2>/dev/null || cp downloaded_file extracted/binary_file
           fi
           BINARY=$(find extracted/ -type f | while read f; do
             ft=$(file "$f" | tr '[:upper:]' '[:lower:]')
-            if echo "$ft" | grep -qE 'executable|elf|script'; then
-              echo "$f"; break
-            fi
+            echo "$ft" | grep -qE 'executable|elf|script' && echo "$f" && break
           done)
-          if [ -z "$BINARY" ]; then
-            BINARY=$(find extracted/ -type f ! -name "*.txt" ! -name "*.md" ! -name "*.json" \
-              | xargs ls -S 2>/dev/null | head -1)
-          fi
+          [ -z "$BINARY" ] && BINARY=$(find extracted/ -type f ! -name "*.txt" ! -name "*.md" ! -name "*.json" | xargs ls -S 2>/dev/null | head -1)
           RENAME="${{ inputs.file_rename }}"
-          if [ -n "$RENAME" ]; then
-            FINAL_NAME="$RENAME"
-          else
-            FINAL_NAME=$(basename "$BINARY")
-          fi
+          FINAL_NAME="${RENAME:-$(basename "$BINARY")}"
           cp "$BINARY" "$FINAL_NAME"
           chmod 755 "$FINAL_NAME"
           echo "binary_path=$FINAL_NAME" >> $GITHUB_OUTPUT
@@ -123,19 +96,14 @@ jobs:
         run: |
           BINARY_NAME="${{ steps.binary.outputs.binary_name }}"
           SERVICE="${{ inputs.service_name }}"
-
           BIN_IPK_NAME="${{ inputs.binary_ipk_name }}"
           [ -z "$BIN_IPK_NAME" ] && BIN_IPK_NAME="$BINARY_NAME"
-
           BIN_VERSION="${{ inputs.binary_version }}"
           [ -z "$BIN_VERSION" ] && BIN_VERSION="$(shuf -i 1-9 -n1).$(shuf -i 0-9 -n1).$(shuf -i 0-99 -n1)"
-
           LUCI_PKG="${{ inputs.luci_ipk_name }}"
           [ -z "$LUCI_PKG" ] && [ -n "$SERVICE" ] && LUCI_PKG="luci-app-${SERVICE}"
-
           LUCI_VERSION="${{ inputs.luci_version }}"
           [ -z "$LUCI_VERSION" ] && LUCI_VERSION="$(shuf -i 1-9 -n1).$(shuf -i 0-9 -n1)-r$(shuf -i 1-9 -n1)"
-
           echo "bin_ipk_name=$BIN_IPK_NAME" >> $GITHUB_OUTPUT
           echo "bin_version=$BIN_VERSION" >> $GITHUB_OUTPUT
           echo "luci_pkg=$LUCI_PKG" >> $GITHUB_OUTPUT
@@ -145,31 +113,19 @@ jobs:
         id: build_bin_ipk
         run: |
           BINARY_NAME="${{ steps.binary.outputs.binary_name }}"
-          BINARY_PATH="${{ steps.binary.outputs.binary_path }}"
           BIN_IPK_NAME="${{ steps.meta.outputs.bin_ipk_name }}"
           BIN_VERSION="${{ steps.meta.outputs.bin_version }}"
           IPK_FILE="${BIN_IPK_NAME}_${BIN_VERSION}_all.ipk"
-
           mkdir -p ipk_bin/data/usr/bin ipk_bin/control
-          cp "$BINARY_PATH" "ipk_bin/data/usr/bin/$BINARY_NAME"
+          cp "${{ steps.binary.outputs.binary_path }}" "ipk_bin/data/usr/bin/$BINARY_NAME"
           chmod 755 "ipk_bin/data/usr/bin/$BINARY_NAME"
           INSTALLED_SIZE=$(du -sk ipk_bin/data | awk '{print $1}')
-
-          cat > ipk_bin/control/control << EOF
-Package: ${BIN_IPK_NAME}
-Version: ${BIN_VERSION}
-Architecture: aarch64_cortex-a53
-Installed-Size: ${INSTALLED_SIZE}
-Section: utils
-Description: ${BIN_IPK_NAME} binary package
-EOF
-
+          printf 'Package: %s\nVersion: %s\nArchitecture: aarch64_cortex-a53\nInstalled-Size: %s\nSection: utils\nDescription: %s binary package\n' \
+            "$BIN_IPK_NAME" "$BIN_VERSION" "$INSTALLED_SIZE" "$BIN_IPK_NAME" > ipk_bin/control/control
           echo "2.0" > debian-binary
           tar --numeric-owner --group=0 --owner=0 -czf control.tar.gz -C ipk_bin/control .
           tar --numeric-owner --group=0 --owner=0 -czf data.tar.gz -C ipk_bin/data .
-          tar --numeric-owner --group=0 --owner=0 -czf "$IPK_FILE" \
-            debian-binary control.tar.gz data.tar.gz
-
+          tar --numeric-owner --group=0 --owner=0 -czf "$IPK_FILE" debian-binary control.tar.gz data.tar.gz
           echo "ipk_file=$IPK_FILE" >> $GITHUB_OUTPUT
 
       - name: Build LuCI IPK
@@ -182,261 +138,174 @@ EOF
           LUCI_VERSION="${{ steps.meta.outputs.luci_version }}"
           LUCI_IPK="${LUCI_PKG}_${LUCI_VERSION}_all.ipk"
 
-          mkdir -p luci_ipk/data/etc/{init.d,config,uci-defaults}
-          mkdir -p luci_ipk/data/usr/share/luci/menu.d
-          mkdir -p luci_ipk/data/usr/share/rpcd/{acl.d,ucode}
-          mkdir -p luci_ipk/data/www/luci-static/resources/view/${SERVICE}
-          mkdir -p luci_ipk/control
+          mkdir -p luci/data/etc/{init.d,config,uci-defaults}
+          mkdir -p luci/data/usr/share/luci/menu.d
+          mkdir -p luci/data/usr/share/rpcd/{acl.d,ucode}
+          mkdir -p luci/data/www/luci-static/resources/view/${SERVICE}
+          mkdir -p luci/control
 
           # uci-defaults: 安装后自动重启 rpcd
-          cat > luci_ipk/data/etc/uci-defaults/${LUCI_PKG} << 'UCIEOF'
-#!/bin/sh
-/etc/init.d/rpcd restart
-exit 0
-UCIEOF
-          chmod +x luci_ipk/data/etc/uci-defaults/${LUCI_PKG}
+          printf '#!/bin/sh\n/etc/init.d/rpcd restart\nexit 0\n' > luci/data/etc/uci-defaults/${LUCI_PKG}
+          chmod +x luci/data/etc/uci-defaults/${LUCI_PKG}
 
           # init.d
-          cat > luci_ipk/data/etc/init.d/${SERVICE} << INITEOF
-#!/bin/sh /etc/rc.common
-USE_PROCD=1
-START=99
-STOP=10
-
-start_service() {
-    config_load "${SERVICE}"
-    local enabled start_cmd work_dir exec_pre env_vars
-    config_get_bool enabled config enabled 0
-    [ "\$enabled" = "0" ] && return 0
-    config_get start_cmd config start_cmd ""
-    [ -z "\$start_cmd" ] && return 1
-    config_get work_dir config work_dir ""
-    config_get exec_pre config exec_pre ""
-    config_get env_vars config env_vars ""
-    [ -n "\$exec_pre" ] && eval "\$exec_pre"
-    procd_open_instance
-    [ -n "\$work_dir" ] && start_cmd="cd \$work_dir && \$start_cmd"
-    procd_set_param command /bin/sh -c "\$start_cmd"
-    if [ -n "\$env_vars" ]; then
-        for env_item in \$env_vars; do
-            procd_append_param env "\$env_item"
-        done
-    fi
-    procd_set_param respawn
-    procd_set_param stderr 1
-    procd_set_param stdout 1
-    procd_close_instance
-}
-
-stop_service() {
-    config_load "${SERVICE}"
-    local exec_stop
-    config_get exec_stop config exec_stop ""
-    [ -n "\$exec_stop" ] && eval "\$exec_stop"
-}
-
-service_triggers() {
-    procd_add_reload_trigger "${SERVICE}"
-}
-INITEOF
-          chmod +x luci_ipk/data/etc/init.d/${SERVICE}
+          cat > luci/data/etc/init.d/${SERVICE} <<INITEOF
+          #!/bin/sh /etc/rc.common
+          USE_PROCD=1
+          START=99
+          STOP=10
+          start_service() {
+              config_load "${SERVICE}"
+              local enabled start_cmd work_dir exec_pre env_vars
+              config_get_bool enabled config enabled 0
+              [ "\$enabled" = "0" ] && return 0
+              config_get start_cmd config start_cmd ""
+              [ -z "\$start_cmd" ] && return 1
+              config_get work_dir config work_dir ""
+              config_get exec_pre config exec_pre ""
+              config_get env_vars config env_vars ""
+              [ -n "\$exec_pre" ] && eval "\$exec_pre"
+              procd_open_instance
+              [ -n "\$work_dir" ] && start_cmd="cd \$work_dir && \$start_cmd"
+              procd_set_param command /bin/sh -c "\$start_cmd"
+              for env_item in \$env_vars; do procd_append_param env "\$env_item"; done
+              procd_set_param respawn
+              procd_set_param stderr 1
+              procd_set_param stdout 1
+              procd_close_instance
+          }
+          stop_service() {
+              config_load "${SERVICE}"
+              local exec_stop
+              config_get exec_stop config exec_stop ""
+              [ -n "\$exec_stop" ] && eval "\$exec_stop"
+          }
+          service_triggers() { procd_add_reload_trigger "${SERVICE}"; }
+          INITEOF
+          sed -i 's/^          //' luci/data/etc/init.d/${SERVICE}
+          chmod +x luci/data/etc/init.d/${SERVICE}
 
           # UCI config
-          cat > luci_ipk/data/etc/config/${SERVICE} << CONFEOF
-config ${SERVICE} config
-	option enabled '0'
-	option start_cmd '/usr/bin/${BINARY_NAME}'
-	option port ''
-CONFEOF
+          printf 'config %s config\n\toption enabled '"'"'0'"'"'\n\toption start_cmd '"'"'/usr/bin/%s'"'"'\n\toption port '"'"''"'"'\n' \
+            "$SERVICE" "$BINARY_NAME" > luci/data/etc/config/${SERVICE}
 
           # Menu
-          cat > luci_ipk/data/usr/share/luci/menu.d/${LUCI_PKG}.json << MENUEOF
-{
-    "admin/services/${SERVICE}": {
-        "title": "${SERVICE}",
-        "order": 90,
-        "action": { "type": "view", "path": "${SERVICE}/main" }
-    },
-    "admin/services/${SERVICE}/log": {
-        "title": "日志",
-        "order": 91,
-        "action": { "type": "view", "path": "${SERVICE}/log" }
-    }
-}
-MENUEOF
+          printf '{\n    "admin/services/%s": {\n        "title": "%s",\n        "order": 90,\n        "action": { "type": "view", "path": "%s/main" }\n    },\n    "admin/services/%s/log": {\n        "title": "日志",\n        "order": 91,\n        "action": { "type": "view", "path": "%s/log" }\n    }\n}\n' \
+            "$SERVICE" "$SERVICE" "$SERVICE" "$SERVICE" "$SERVICE" \
+            > luci/data/usr/share/luci/menu.d/${LUCI_PKG}.json
 
           # ACL
-          cat > luci_ipk/data/usr/share/rpcd/acl.d/${LUCI_PKG}.json << ACLEOF
-{
-    "${LUCI_PKG}": {
-        "description": "LuCI ${SERVICE} access control",
-        "read": {
-            "ubus": { "luci.${SERVICE}": [ "get_status", "get_log" ] },
-            "uci": [ "${SERVICE}" ]
-        },
-        "write": { "uci": [ "${SERVICE}" ] }
-    }
-}
-ACLEOF
+          printf '{\n    "%s": {\n        "description": "LuCI %s",\n        "read": {\n            "ubus": { "luci.%s": [ "get_status", "get_log" ] },\n            "uci": [ "%s" ]\n        },\n        "write": { "uci": [ "%s" ] }\n    }\n}\n' \
+            "$LUCI_PKG" "$SERVICE" "$SERVICE" "$SERVICE" "$SERVICE" \
+            > luci/data/usr/share/rpcd/acl.d/${LUCI_PKG}.json
 
           # RPC ucode
-          cat > luci_ipk/data/usr/share/rpcd/ucode/luci.${SERVICE} << RPCEOF
-#!/usr/bin/ucode
-'use strict';
-import { popen } from 'fs';
-import { cursor } from 'uci';
-const SERVICE = '${SERVICE}';
-const methods = {
-    get_status: {
-        call: function() {
-            const uci = cursor();
-            uci.load(SERVICE);
-            const start_cmd = uci.get(SERVICE, 'config', 'start_cmd') || '';
-            const bin = split(start_cmd, ' ')[0] || SERVICE;
-            return { running: system('pgrep -f ' + bin + ' >/dev/null 2>&1') === 0 };
-        }
-    },
-    get_log: {
-        call: function() {
-            const fd = popen('logread 2>/dev/null | grep -i "' + SERVICE + '" | tail -200');
-            const log = fd ? (fd.read('all') || '') : '';
-            if (fd) fd.close();
-            return { log };
-        }
-    }
-};
-return { ['luci.' + SERVICE]: methods };
-RPCEOF
+          cat > luci/data/usr/share/rpcd/ucode/luci.${SERVICE} <<RPCEOF
+          #!/usr/bin/ucode
+          'use strict';
+          import { popen } from 'fs';
+          import { cursor } from 'uci';
+          const SERVICE = '${SERVICE}';
+          const methods = {
+              get_status: {
+                  call: function() {
+                      const uci = cursor();
+                      uci.load(SERVICE);
+                      const start_cmd = uci.get(SERVICE, 'config', 'start_cmd') || '';
+                      const bin = split(start_cmd, ' ')[0] || SERVICE;
+                      return { running: system('pgrep -f ' + bin + ' >/dev/null 2>&1') === 0 };
+                  }
+              },
+              get_log: {
+                  call: function() {
+                      const fd = popen('logread 2>/dev/null | grep -i "' + SERVICE + '" | tail -200');
+                      const log = fd ? (fd.read('all') || '') : '';
+                      if (fd) fd.close();
+                      return { log };
+                  }
+              }
+          };
+          return { ['luci.' + SERVICE]: methods };
+          RPCEOF
+          sed -i 's/^          //' luci/data/usr/share/rpcd/ucode/luci.${SERVICE}
 
           # main.js
-          cat > luci_ipk/data/www/luci-static/resources/view/${SERVICE}/main.js << JSEOF
-'use strict';
-'require view';
-'require form';
-'require rpc';
-'require poll';
-'require uci';
-
-const SERVICE = '${SERVICE}';
-
-const callGetStatus = rpc.declare({
-    object: 'luci.' + SERVICE,
-    method: 'get_status',
-    expect: { '': {} }
-});
-
-return view.extend({
-    load() { return uci.load(SERVICE); },
-    render() {
-        let m, s, o;
-        m = new form.Map(SERVICE, SERVICE);
-
-        const statusSection = m.section(form.TypedSection);
-        statusSection.render = function() {
-            const statusEl = E('span', { 'style': 'font-style:italic; font-weight:bold;' }, '检查中...');
-            const openBtn = E('a', {
-                'class': 'btn cbi-button cbi-button-action',
-                'target': '_blank',
-                'style': 'margin-left:8px; display:none;'
-            }, '打开 Web 界面');
-            poll.add(() => {
-                const port = uci.get(SERVICE, 'config', 'port');
-                return callGetStatus().then(res => {
-                    const running = res && res.running;
-                    statusEl.innerHTML = running
-                        ? '<span style="color:#27ae60">' + SERVICE + ' 运行中</span>'
-                        : '<span style="color:#e74c3c">' + SERVICE + ' 未运行</span>';
-                    if (port && running) {
-                        openBtn.href = 'http://' + window.location.hostname + ':' + port;
-                        openBtn.style.display = '';
-                    } else { openBtn.style.display = 'none'; }
-                });
-            }, 5);
-            return E('div', { 'class': 'cbi-section', 'style': 'padding:8px 0;' }, [
-                E('div', { 'style': 'display:flex; align-items:center;' }, [ statusEl, openBtn ])
-            ]);
-        };
-
-        s = m.section(form.NamedSection, 'config', SERVICE, '设置');
-        s.anonymous = true;
-
-        o = s.option(form.Flag, 'enabled', '启用');
-        o.default = o.disabled; o.rmempty = false;
-
-        o = s.option(form.Value, 'start_cmd', '启动命令',
-            '服务的完整启动命令，例如：/usr/bin/${BINARY_NAME} server');
-        o.rmempty = false;
-
-        o = s.option(form.Value, 'port', '端口', '服务的 Web 端口，填写后显示打开按钮');
-        o.datatype = 'port'; o.rmempty = true;
-
-        o = s.option(form.Value, 'work_dir', 'WorkingDirectory', '工作目录');
-        o.rmempty = true;
-
-        o = s.option(form.DynamicList, 'env_vars', 'Environment', '环境变量，格式：KEY=VALUE');
-        o.placeholder = 'KEY=VALUE'; o.rmempty = true;
-
-        o = s.option(form.Value, 'exec_pre', 'ExecStartPre', '启动前执行的命令');
-        o.rmempty = true;
-
-        o = s.option(form.Value, 'exec_stop', 'ExecStopPost', '停止后执行的命令');
-        o.rmempty = true;
-
-        return m.render();
-    }
-});
-JSEOF
+          cat > luci/data/www/luci-static/resources/view/${SERVICE}/main.js <<JSEOF
+          'use strict';
+          'require view';
+          'require form';
+          'require rpc';
+          'require poll';
+          'require uci';
+          const SERVICE = '${SERVICE}';
+          const callGetStatus = rpc.declare({ object: 'luci.' + SERVICE, method: 'get_status', expect: { '': {} } });
+          return view.extend({
+              load() { return uci.load(SERVICE); },
+              render() {
+                  let m, s, o;
+                  m = new form.Map(SERVICE, SERVICE);
+                  const ss = m.section(form.TypedSection);
+                  ss.render = function() {
+                      const el = E('span', { style: 'font-style:italic;font-weight:bold;' }, '检查中...');
+                      const btn = E('a', { class: 'btn cbi-button cbi-button-action', target: '_blank', style: 'margin-left:8px;display:none;' }, '打开 Web 界面');
+                      poll.add(() => {
+                          const port = uci.get(SERVICE, 'config', 'port');
+                          return callGetStatus().then(res => {
+                              const r = res && res.running;
+                              el.innerHTML = r ? '<span style="color:#27ae60">' + SERVICE + ' 运行中</span>' : '<span style="color:#e74c3c">' + SERVICE + ' 未运行</span>';
+                              if (r && port) { btn.href = 'http://' + window.location.hostname + ':' + port; btn.style.display = ''; }
+                              else btn.style.display = 'none';
+                          });
+                      }, 5);
+                      return E('div', { class: 'cbi-section', style: 'padding:8px 0;' }, [E('div', { style: 'display:flex;align-items:center;' }, [el, btn])]);
+                  };
+                  s = m.section(form.NamedSection, 'config', SERVICE, '设置');
+                  s.anonymous = true;
+                  o = s.option(form.Flag, 'enabled', '启用'); o.default = o.disabled; o.rmempty = false;
+                  o = s.option(form.Value, 'start_cmd', '启动命令', '例如：/usr/bin/${BINARY_NAME} server'); o.rmempty = false;
+                  o = s.option(form.Value, 'port', '端口', '服务 Web 端口，填写后显示打开按钮'); o.datatype = 'port'; o.rmempty = true;
+                  o = s.option(form.Value, 'work_dir', 'WorkingDirectory', '工作目录'); o.rmempty = true;
+                  o = s.option(form.DynamicList, 'env_vars', 'Environment', '环境变量 KEY=VALUE'); o.rmempty = true;
+                  o = s.option(form.Value, 'exec_pre', 'ExecStartPre', '启动前执行'); o.rmempty = true;
+                  o = s.option(form.Value, 'exec_stop', 'ExecStopPost', '停止后执行'); o.rmempty = true;
+                  return m.render();
+              }
+          });
+          JSEOF
+          sed -i 's/^          //' luci/data/www/luci-static/resources/view/${SERVICE}/main.js
 
           # log.js
-          cat > luci_ipk/data/www/luci-static/resources/view/${SERVICE}/log.js << LOGEOF
-'use strict';
-'require view';
-'require rpc';
-'require poll';
-const SERVICE = '${SERVICE}';
-const callGetLog = rpc.declare({
-    object: 'luci.' + SERVICE, method: 'get_log', expect: { '': {} }
-});
-return view.extend({
-    render() {
-        const logArea = E('pre', {
-            'style': 'background:#1e1e1e; color:#d4d4d4; padding:12px; border-radius:4px; ' +
-                     'height:500px; overflow-y:auto; font-size:12px; white-space:pre-wrap;'
-        }, '加载中...');
-        poll.add(() => callGetLog().then(res => {
-            logArea.textContent = (res && res.log) ? res.log.trim() : '暂无日志';
-            logArea.scrollTop = logArea.scrollHeight;
-        }), 5);
-        return E('div', { 'class': 'cbi-map' }, [
-            E('div', { 'class': 'cbi-section' }, [
-                E('h3', {}, SERVICE + ' 运行日志'), logArea
-            ])
-        ]);
-    },
-    handleSaveApply: null, handleSave: null, handleReset: null
-});
-LOGEOF
+          cat > luci/data/www/luci-static/resources/view/${SERVICE}/log.js <<LOGEOF
+          'use strict';
+          'require view';
+          'require rpc';
+          'require poll';
+          const SERVICE = '${SERVICE}';
+          const callGetLog = rpc.declare({ object: 'luci.' + SERVICE, method: 'get_log', expect: { '': {} } });
+          return view.extend({
+              render() {
+                  const a = E('pre', { style: 'background:#1e1e1e;color:#d4d4d4;padding:12px;border-radius:4px;height:500px;overflow-y:auto;font-size:12px;white-space:pre-wrap;' }, '加载中...');
+                  poll.add(() => callGetLog().then(res => { a.textContent = (res && res.log) ? res.log.trim() : '暂无日志'; a.scrollTop = a.scrollHeight; }), 5);
+                  return E('div', { class: 'cbi-map' }, [E('div', { class: 'cbi-section' }, [E('h3', {}, SERVICE + ' 运行日志'), a])]);
+              },
+              handleSaveApply: null, handleSave: null, handleReset: null
+          });
+          LOGEOF
+          sed -i 's/^          //' luci/data/www/luci-static/resources/view/${SERVICE}/log.js
 
-          INSTALLED_SIZE=$(du -sk luci_ipk/data | awk '{print $1}')
-          cat > luci_ipk/control/control << CTRLEOF
-Package: ${LUCI_PKG}
-Version: ${LUCI_VERSION}
-Depends: libc, ${BINARY_NAME}
-Architecture: all
-Installed-Size: ${INSTALLED_SIZE}
-Section: luci
-Description: LuCI interface for ${SERVICE}
-CTRLEOF
+          # control
+          INSTALLED_SIZE=$(du -sk luci/data | awk '{print $1}')
+          printf 'Package: %s\nVersion: %s\nDepends: libc, %s\nArchitecture: all\nInstalled-Size: %s\nSection: luci\nDescription: LuCI interface for %s\n' \
+            "$LUCI_PKG" "$LUCI_VERSION" "$BINARY_NAME" "$INSTALLED_SIZE" "$SERVICE" > luci/control/control
 
-          echo "2.0" > luci_debian-binary
-          tar --numeric-owner --group=0 --owner=0 -czf luci_control.tar.gz -C luci_ipk/control .
-          tar --numeric-owner --group=0 --owner=0 -czf luci_data.tar.gz -C luci_ipk/data .
+          echo "2.0" > luci_deb
+          tar --numeric-owner --group=0 --owner=0 -czf luci_ctrl.tar.gz -C luci/control .
+          tar --numeric-owner --group=0 --owner=0 -czf luci_data.tar.gz -C luci/data .
           tar --numeric-owner --group=0 --owner=0 -czf "$LUCI_IPK" \
-            --transform 's|luci_debian-binary|debian-binary|' \
-            --transform 's|luci_control\.tar\.gz|control.tar.gz|' \
+            --transform 's|luci_deb|debian-binary|' \
+            --transform 's|luci_ctrl\.tar\.gz|control.tar.gz|' \
             --transform 's|luci_data\.tar\.gz|data.tar.gz|' \
-            luci_debian-binary luci_control.tar.gz luci_data.tar.gz
-
+            luci_deb luci_ctrl.tar.gz luci_data.tar.gz
           echo "luci_ipk_file=$LUCI_IPK" >> $GITHUB_OUTPUT
 
       - name: Create Release
