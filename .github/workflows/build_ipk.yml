@@ -308,13 +308,26 @@ jobs:
             luci_deb luci_ctrl.tar.gz luci_data.tar.gz
           echo "luci_ipk_file=$LUCI_IPK" >> $GITHUB_OUTPUT
 
+      - name: Prepare release info
+        id: release_info
+        run: |
+          if [ -n "${{ inputs.release_notes }}" ]; then
+            BODY="${{ inputs.release_notes }}"
+          else
+            BODY="Binary: ${{ steps.meta.outputs.bin_ipk_name }} v${{ steps.meta.outputs.bin_version }}"
+            if [ "${{ inputs.package_type }}" = "打包可执行文件 + LuCI 界面" ]; then
+              BODY="$BODY\nLuCI: ${{ steps.meta.outputs.luci_pkg }} v${{ steps.meta.outputs.luci_version }}"
+            fi
+          fi
+          echo "body=$BODY" >> $GITHUB_OUTPUT
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: "Build ${{ github.run_number }} - ${{ steps.binary.outputs.binary_name }}"
-          body: ${{ inputs.release_notes != '' && inputs.release_notes || format('Binary: {0} v{1}\nLuCI: {2} v{3}', steps.meta.outputs.bin_ipk_name, steps.meta.outputs.bin_version, steps.meta.outputs.luci_pkg, steps.meta.outputs.luci_version) }}
+          body: ${{ steps.release_info.outputs.body }}
           files: |
             ${{ steps.build_bin_ipk.outputs.ipk_file }}
-            ${{ inputs.package_type == '打包可执行文件 + LuCI 界面' && steps.build_luci_ipk.outputs.luci_ipk_file || '' }}
+            ${{ steps.build_luci_ipk.outputs.luci_ipk_file }}
           generate_release_notes: false
