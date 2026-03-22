@@ -9,13 +9,11 @@ start_service() {
     local enabled
     config_get_bool enabled config enabled 0
     [ "$enabled" = "0" ] && return 1
-
-    __EXEC_PRE__
-
+__EXEC_PRE__
     procd_open_instance "__SERVICE__"
     __START_CMD__
-    __WORKING_DIR__
-    __ENVIRONMENT__
+__WORKING_DIR__
+__ENVIRONMENT__
     procd_set_param respawn
     procd_set_param stdout 1
     procd_set_param stderr 1
@@ -23,7 +21,7 @@ start_service() {
 }
 
 stop_service() {
-    __EXEC_POST__
+__EXEC_POST__
 }
 
 service_triggers() {
