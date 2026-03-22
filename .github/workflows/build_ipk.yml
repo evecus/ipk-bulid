@@ -242,7 +242,7 @@ EOF
           # ── init.d ─────────────────────────────────────────
           with open('template/init.d.sh') as f: initd = f.read()
 
-          # start_cmd
+          # start_cmd（始终存在）
           if sc_fixed:
               cmd_line = f'procd_set_param command /bin/sh -c "{sc_value}"'
           else:
@@ -252,45 +252,45 @@ EOF
           # working_dir
           if wd_enabled:
               if wd_fixed:
-                  wd = f'cd "{wd_value}" 2>/dev/null || true\n    procd_set_param env HOME="{wd_value}"'
+                  wd = f'    cd "{wd_value}" 2>/dev/null || true\n    procd_set_param env HOME="{wd_value}"'
               else:
-                  wd = ('local _wd; config_get _wd config working_dir ""\n'
+                  wd = ('    local _wd; config_get _wd config working_dir ""\n'
                         '    [ -n "$_wd" ] && cd "$_wd" 2>/dev/null\n'
                         '    [ -n "$_wd" ] && procd_set_param env HOME="$_wd"')
-              initd = initd.replace('    __WORKING_DIR__', f'    {wd}')
+              initd = initd.replace('__WORKING_DIR__', wd)
           else:
-              initd = initd.replace('\n    __WORKING_DIR__', '')
+              initd = initd.replace('\n__WORKING_DIR__', '')
 
           # environment
           if env_enabled:
               if env_fixed:
                   ev = '\n'.join(f'    procd_append_param env {x}' for x in env_value.split())
               else:
-                  ev = ('local _env; config_get _env config environment ""\n'
+                  ev = ('    local _env; config_get _env config environment ""\n'
                         '    for _e in $_env; do procd_append_param env "$_e"; done')
-              initd = initd.replace('    __ENVIRONMENT__', f'    {ev}')
+              initd = initd.replace('__ENVIRONMENT__', ev)
           else:
-              initd = initd.replace('\n    __ENVIRONMENT__', '')
+              initd = initd.replace('\n__ENVIRONMENT__', '')
 
           # exec_pre
           if pre_enabled:
               if pre_fixed:
-                  pr = pre_value
+                  pr = f'\n    {pre_value}'
               else:
-                  pr = 'local _pre; config_get _pre config exec_pre ""\n    [ -n "$_pre" ] && eval "$_pre"'
-              initd = initd.replace('    __EXEC_PRE__', f'    {pr}')
+                  pr = '\n    local _pre; config_get _pre config exec_pre ""\n    [ -n "$_pre" ] && eval "$_pre"'
+              initd = initd.replace('\n__EXEC_PRE__', pr)
           else:
-              initd = initd.replace('\n    __EXEC_PRE__', '')
+              initd = initd.replace('\n__EXEC_PRE__', '')
 
           # exec_post
           if post_enabled:
               if post_fixed:
-                  po = post_value
+                  po = f'    {post_value}'
               else:
                   po = '    local _post; config_get _post config exec_post ""\n    [ -n "$_post" ] && eval "$_post"'
-              initd = initd.replace('    __EXEC_POST__', po)
+              initd = initd.replace('__EXEC_POST__', po)
           else:
-              initd = initd.replace('    __EXEC_POST__', '    :')
+              initd = initd.replace('__EXEC_POST__', '    :')
 
           initd = initd.replace('__SERVICE__', SERVICE)
           open('luci_build/init.d', 'w').write(initd)
