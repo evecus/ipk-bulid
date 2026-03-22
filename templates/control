@@ -1,0 +1,8 @@
+Package: {{PKG_NAME}}
+Version: {{VERSION}}
+Depends: libc, luci-base
+License: GPL-2.0-only
+Section: luci
+Architecture: all
+Installed-Size: 20
+Description: {{DESCRIPTION}}

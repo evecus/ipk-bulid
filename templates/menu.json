@@ -1,0 +1,28 @@
+{
+    "admin/services/{{SERVICE_NAME}}": {
+        "title": "{{SERVICE_TITLE}}",
+        "action": {
+            "type": "firstchild"
+        },
+        "depends": {
+            "acl": [ "{{PKG_NAME}}" ],
+            "uci": { "{{SERVICE_NAME}}": true }
+        }
+    },
+    "admin/services/{{SERVICE_NAME}}/main": {
+        "title": "基本配置",
+        "order": 10,
+        "action": {
+            "type": "view",
+            "path": "{{SERVICE_NAME}}/main"
+        }
+    },
+    "admin/services/{{SERVICE_NAME}}/log": {
+        "title": "运行日志",
+        "order": 20,
+        "action": {
+            "type": "view",
+            "path": "{{SERVICE_NAME}}/log"
+        }
+    }
+}

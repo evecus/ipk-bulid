@@ -1,0 +1,15 @@
+{
+    "{{PKG_NAME}}": {
+        "description": "Grant access to {{SERVICE_TITLE}} configurations",
+        "read": {
+            "uci": [ "{{SERVICE_NAME}}" ],
+            "ubus": {
+                "rc": [ "*" ],
+                "luci.{{SERVICE_NAME}}": [ "*" ]
+            }
+        },
+        "write": {
+            "uci": [ "{{SERVICE_NAME}}" ]
+        }
+    }
+}
