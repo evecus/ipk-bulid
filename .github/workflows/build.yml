@@ -57,6 +57,14 @@ on:
         default: ''
         type: string
 
+      work_dir:
+        description: |
+          工作目录，类似 systemd 的 WorkingDirectory
+          启动进程前切换到此目录，留空则不设置
+        required: false
+        default: ''
+        type: string
+
       extra_options:
         description: |
           补充输入框，对应 start_args 里的 $变量名
@@ -87,6 +95,7 @@ jobs:
           INPUT_START_ARGS:    ${{ github.event.inputs.start_args }}
           INPUT_HAS_WEB:       ${{ github.event.inputs.has_web }}
           INPUT_WEB_ENTRY:     ${{ github.event.inputs.web_entry }}
+          INPUT_WORK_DIR:       ${{ github.event.inputs.work_dir }}
           INPUT_EXTRA_OPTIONS: ${{ github.event.inputs.extra_options }}
         run: |
           chmod +x scripts/build.sh
