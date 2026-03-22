@@ -1,4 +1,4 @@
-name: Build IPK
+name: Build CORE IPK
 
 on:
   workflow_dispatch:
@@ -9,7 +9,6 @@ on:
         type: choice
         options:
           - '仅打包可执行文件'
-          - '打包可执行文件 + LuCI 界面'
       file_url:
         description: '文件下载链接（支持 .tar.gz / .gz / .zip / 直链 ELF）'
         required: true
