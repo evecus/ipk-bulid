@@ -17,6 +17,7 @@ has_web       = os.environ.get('INPUT_HAS_WEB', 'false').lower() == 'true'
 web_entry     = os.environ.get('INPUT_WEB_ENTRY', '3001').strip() or '3001'
 extra_options = os.environ.get('INPUT_EXTRA_OPTIONS', '').strip()
 work_dir      = os.environ.get('INPUT_WORK_DIR', '').strip()
+env_vars      = os.environ.get('INPUT_ENV_VARS', 'false').lower() == 'true'
 
 service_name = pkg_name.replace('luci-app-', '', 1)
 binary_name  = binary.split('/')[-1]
@@ -30,6 +31,17 @@ if extra_options:
             var_names.append(parts[0])
             var_defaults.append(parts[1])
             var_labels.append(parts[2])
+
+# ── ENV_VARS（init.d 用）─────────────────────────────────
+env_vars_handler = ''
+env_vars_procd   = ''
+if env_vars:
+    # handle_env_var 函数放在 start_service 之前
+    env_vars_handler  = "handle_env_var() {\n"
+    env_vars_handler += "    procd_append_param env \"$1\"\n"
+    env_vars_handler += "}\n\n"
+    # start_service 里调用
+    env_vars_procd  = "    config_list_foreach main env_vars handle_env_var\n"
 
 # ── WORK_DIR_PROCD（init.d 用）──────────────────────────
 work_dir_procd = ("    procd_set_param chdir '" + work_dir + "'\n") if work_dir else ""
@@ -53,6 +65,14 @@ if has_web:
     uci_defaults += f"\toption web_entry '{web_entry}'\n"
 for i, vname in enumerate(var_names):
     uci_defaults += f"\toption {vname} '{var_defaults[i]}'\n"
+# env_vars 用 list 类型，默认空（不写入配置）
+
+# ── ENV_VARS_FIELD（main.js DynamicList）──────────────────
+env_vars_field = ''
+if env_vars:
+    env_vars_field  = "        o = s.option(form.DynamicList, 'env_vars', '环境变量');\n"
+    env_vars_field += "        o.placeholder = 'KEY=value';\n"
+    env_vars_field += "        o.rmempty = true;\n\n"
 
 # ── EXTRA_FIELDS（main.js 输入框）────────────────────────
 extra_fields = ''
@@ -100,7 +120,9 @@ replacements = {
     '{{CONFIG_GETS}}':      config_gets,
     '{{START_ARGS_PROCD}}': start_args_procd,
     '{{WORK_DIR_PROCD}}':   work_dir_procd,
-    '{{EXTRA_FIELDS}}':     extra_fields,
+    '{{ENV_VARS_PROCD}}':   env_vars_procd,
+    '{{ENV_VARS_HANDLER}}': env_vars_handler,
+    '{{EXTRA_FIELDS}}':     extra_fields + env_vars_field,
     '{{OPEN_BTN_DEF}}':     open_btn_def,
     '{{OPEN_BTN_REF}}':     open_btn_ref,
     '{{UCI_DEFAULTS}}':     uci_defaults,
