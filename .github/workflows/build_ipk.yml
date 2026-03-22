@@ -178,12 +178,12 @@ jobs:
 
           INSTALLED_SIZE=$(du -sk ipk_bin/data | awk '{print $1}')
           cat > ipk_bin/control/control << EOF
-Package: $BIN_IPK_NAME
-Version: $BIN_VERSION
-Architecture: all
-Installed-Size: $INSTALLED_SIZE
-Section: utils
-Description: $BIN_IPK_NAME binary
+          Package: $BIN_IPK_NAME
+          Version: $BIN_VERSION
+          Architecture: all
+          Installed-Size: $INSTALLED_SIZE
+          Section: utils
+          Description: $BIN_IPK_NAME binary
 EOF
 
           echo "2.0" > debian-binary
