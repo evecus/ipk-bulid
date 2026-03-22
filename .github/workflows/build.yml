@@ -65,6 +65,15 @@ on:
         default: ''
         type: string
 
+      env_vars:
+        description: '是否在 LuCI 界面显示环境变量配置（DynamicList，格式 KEY=value）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
       extra_options:
         description: |
           补充输入框，对应 start_args 里的 $变量名
@@ -96,6 +105,7 @@ jobs:
           INPUT_HAS_WEB:       ${{ github.event.inputs.has_web }}
           INPUT_WEB_ENTRY:     ${{ github.event.inputs.web_entry }}
           INPUT_WORK_DIR:       ${{ github.event.inputs.work_dir }}
+          INPUT_ENV_VARS:       ${{ github.event.inputs.env_vars }}
           INPUT_EXTRA_OPTIONS: ${{ github.event.inputs.extra_options }}
         run: |
           chmod +x scripts/build.sh
