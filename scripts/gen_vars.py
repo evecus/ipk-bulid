@@ -16,6 +16,7 @@ start_args    = os.environ.get('INPUT_START_ARGS', '').strip()
 has_web       = os.environ.get('INPUT_HAS_WEB', 'false').lower() == 'true'
 web_entry     = os.environ.get('INPUT_WEB_ENTRY', '3001').strip() or '3001'
 extra_options = os.environ.get('INPUT_EXTRA_OPTIONS', '').strip()
+work_dir      = os.environ.get('INPUT_WORK_DIR', '').strip()
 
 service_name = pkg_name.replace('luci-app-', '', 1)
 binary_name  = binary.split('/')[-1]
@@ -29,6 +30,9 @@ if extra_options:
             var_names.append(parts[0])
             var_defaults.append(parts[1])
             var_labels.append(parts[2])
+
+# ── WORK_DIR_PROCD（init.d 用）──────────────────────────
+work_dir_procd = ("    procd_set_param chdir '" + work_dir + "'\n") if work_dir else ""
 
 # ── CONFIG_GETS（init.d 用）──────────────────────────────
 config_gets = ''
@@ -95,6 +99,7 @@ replacements = {
     '{{BINARY_NAME}}':      binary_name,
     '{{CONFIG_GETS}}':      config_gets,
     '{{START_ARGS_PROCD}}': start_args_procd,
+    '{{WORK_DIR_PROCD}}':   work_dir_procd,
     '{{EXTRA_FIELDS}}':     extra_fields,
     '{{OPEN_BTN_DEF}}':     open_btn_def,
     '{{OPEN_BTN_REF}}':     open_btn_ref,
