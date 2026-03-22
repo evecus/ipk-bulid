@@ -1,0 +1,107 @@
+name: Build LuCI App IPK
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_name:
+        description: '包名 (如 luci-app-sub-store)'
+        required: true
+        type: string
+
+      service_title:
+        description: '服务名称，显示在菜单和页面标题 (如 Sub-Store)'
+        required: true
+        type: string
+
+      version:
+        description: '版本号 (如 1.0-r1)'
+        required: true
+        default: '1.0-r1'
+        type: string
+
+      description:
+        description: '介绍，显示在标题下方 (如 简单的订阅管理器)'
+        required: true
+        type: string
+
+      binary:
+        description: '二进制路径 (如 /usr/bin/sub-store)'
+        required: true
+        type: string
+
+      start_args:
+        description: |
+          启动参数，不含二进制本身，用 $变量名 引用变量
+          示例: --port=$port --path=$backend_path --dir=$data_dir
+          留空则直接启动二进制不带参数
+        required: false
+        default: ''
+        type: string
+
+      has_web:
+        description: '是否有 Web 界面（显示网页入口输入框和打开按钮）'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+      web_entry:
+        description: |
+          网页入口，has_web=true 时填写
+          格式: 端口 或 端口/路径
+          示例: 3001 或 3001/ui
+        required: false
+        default: '3001'
+        type: string
+
+      extra_options:
+        description: |
+          补充输入框，对应 start_args 里的 $变量名
+          格式: 变量名:默认值:显示标签（空格分隔多个）
+          示例: port:3001:端口 backend_path:/sub-store:后端路径 data_dir:/etc/sub-store:数据保存路径
+          留空则不生成额外输入框
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build IPK
+        id: build
+        env:
+          INPUT_PACKAGE_NAME:  ${{ github.event.inputs.package_name }}
+          INPUT_SERVICE_TITLE: ${{ github.event.inputs.service_title }}
+          INPUT_VERSION:       ${{ github.event.inputs.version }}
+          INPUT_DESCRIPTION:   ${{ github.event.inputs.description }}
+          INPUT_BINARY:        ${{ github.event.inputs.binary }}
+          INPUT_START_ARGS:    ${{ github.event.inputs.start_args }}
+          INPUT_HAS_WEB:       ${{ github.event.inputs.has_web }}
+          INPUT_WEB_ENTRY:     ${{ github.event.inputs.web_entry }}
+          INPUT_EXTRA_OPTIONS: ${{ github.event.inputs.extra_options }}
+        run: |
+          chmod +x scripts/build.sh
+          bash scripts/build.sh
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.package_name }}-${{ github.event.inputs.version }}
+          name: ${{ github.event.inputs.service_title }} ${{ github.event.inputs.version }}
+          body: |
+            ## ${{ github.event.inputs.service_title }} ${{ github.event.inputs.version }}
+
+            ${{ github.event.inputs.description }}
+
+            **Binary**: `${{ github.event.inputs.binary }}`
+            **Start args**: `${{ github.event.inputs.start_args }}`
+            **Has web**: ${{ github.event.inputs.has_web }}
+          files: ${{ steps.build.outputs.ipk_name }}
+          fail_on_unmatched_files: true
