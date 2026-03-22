@@ -381,11 +381,11 @@ jobs:
           cp luci_build/uci_config luci_ipk/data/etc/config/${SERVICE}
 
           cat > luci_ipk/data/etc/uci-defaults/${LUCI_PKG} << EOF
-#!/bin/sh
-/etc/init.d/${SERVICE} enable
-/etc/init.d/rpcd restart
-exit 0
-EOF
+          #!/bin/sh
+          /etc/init.d/${SERVICE} enable
+          /etc/init.d/rpcd restart
+          exit 0
+          EOF
           chmod +x luci_ipk/data/etc/uci-defaults/${LUCI_PKG}
 
           cp luci_build/menu.json luci_ipk/data/usr/share/luci/menu.d/${LUCI_PKG}.json
@@ -395,14 +395,14 @@ EOF
 
           INSTALLED_SIZE=$(du -sk luci_ipk/data | awk '{print $1}')
           cat > luci_ipk/control/control << EOF
-Package: $LUCI_PKG
-Version: $LUCI_VERSION
-Depends: libc, $BIN_IPK_NAME, luci-base, rpcd
-Architecture: all
-Installed-Size: $INSTALLED_SIZE
-Section: luci
-Description: LuCI interface for $SERVICE
-EOF
+          Package: $LUCI_PKG
+          Version: $LUCI_VERSION
+          Depends: libc, $BIN_IPK_NAME, luci-base, rpcd
+          Architecture: all
+          Installed-Size: $INSTALLED_SIZE
+          Section: luci
+          Description: LuCI interface for $SERVICE
+          EOF
 
           echo "2.0" > luci_deb
           tar --numeric-owner --group=0 --owner=0 -czf luci_ctrl.tar.gz -C luci_ipk/control .
