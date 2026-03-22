@@ -22,12 +22,12 @@ function getServiceStatus() {
     });
 }
 
-function renderStatus(isRunning __WEB_PORT_PARAM__) {
+function renderStatus(isRunning) {
     var spanTemp = '<em><span style="color:%s"><strong>%s %s</strong></span></em>';
     var renderHTML;
     if (isRunning) {
         __OPEN_BTN__
-        renderHTML = spanTemp.format('green', '__SERVICE__', _('运行中')) __OPEN_BTN_APPEND__;
+        renderHTML = spanTemp.format('green', '__SERVICE__', _('运行中'))__OPEN_BTN_APPEND__;
     } else {
         renderHTML = spanTemp.format('red', '__SERVICE__', _('未运行'));
     }
@@ -44,7 +44,6 @@ return view.extend({
 
     render: function(data) {
         var isRunning = data[1];
-        __GET_PORT__
 
         var m, s, o;
         m = new form.Map('__SERVICE__', '__SERVICE__', '__DESCRIPTION__');
@@ -55,14 +54,12 @@ return view.extend({
         s.render = function() {
             poll.add(function() {
                 return getServiceStatus().then(function(running) {
-                    __POLL_GET_PORT__
                     var el = document.getElementById('_service_status');
-                    if (el) el.innerHTML = renderStatus(running __WEB_PORT_ARG__);
+                    if (el) el.innerHTML = renderStatus(running);
                 });
             });
             return E('div', { class: 'cbi-section' }, [
-                E('p', { id: '_service_status' },
-                    renderStatus(isRunning __WEB_PORT_ARG__))
+                E('p', { id: '_service_status' }, renderStatus(isRunning))
             ]);
         };
 
