@@ -49,11 +49,12 @@ on:
 
       web_entry:
         description: |
-          网页入口，has_web=true 时填写
+          网页入口默认值，has_web=true 时有效，用户在 LuCI 界面可修改
           格式: 端口 或 端口/路径
           示例: 3001 或 3001/ui
+          留空则默认 3001
         required: false
-        default: '3001'
+        default: ''
         type: string
 
       extra_options:
@@ -61,6 +62,7 @@ on:
           补充输入框，对应 start_args 里的 $变量名
           格式: 变量名:默认值:显示标签（空格分隔多个）
           示例: port:3001:端口 backend_path:/sub-store:后端路径 data_dir:/etc/sub-store:数据保存路径
+          注意: has_web=true 时网页入口输入框自动生成，不需要在这里定义
           留空则不生成额外输入框
         required: false
         default: ''
