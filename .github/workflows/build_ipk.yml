@@ -14,7 +14,6 @@ on:
         description: '文件下载链接（支持 .tar.gz / .gz / .zip / 直链 ELF）'
         required: true
         type: string
-      # 以下三项仅"仅打包可执行文件"时使用
       file_rename:
         description: '[仅打包] 可执行文件重命名（留空则不修改）'
         required: false
@@ -39,72 +38,60 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 读取 config.yml（LuCI 模式） ──────────────────────
+      # ── 读取 config.yml（LuCI 模式）────────────────────────
       - name: Read config.yml
         if: inputs.package_type == '打包可执行文件 + LuCI 界面'
         id: cfg
         run: |
-          install_pkg() { command -v python3 >/dev/null || sudo apt-get install -y python3; }
-          install_pkg
-
-          python3 << 'PYEOF'
+          python3 - << 'PYEOF'
           import yaml, os, sys
 
           with open('config.yml', 'r') as f:
               c = yaml.safe_load(f)
 
+          gho = open(os.environ['GITHUB_OUTPUT'], 'a')
+
           def out(k, v):
               v = str(v) if v is not None else ''
-              # 多行值转义
               v = v.replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D')
-              print(f"{k}={v}", file=open(os.environ['GITHUB_OUTPUT'], 'a'))
+              gho.write(f"{k}={v}\n")
 
-          def require(field, label):
-              if not field or not str(field).strip():
+          def require(val, label):
+              if not val or not str(val).strip():
                   print(f"::error::{label} 为必填项，请在 config.yml 中填写", file=sys.stderr)
                   sys.exit(1)
 
-          # 核心字段
-          out('binary_name',   c.get('binary_name', ''))
-          out('binary_rename', c.get('binary_rename') or c.get('binary_name', ''))
+          out('binary_name',    c.get('binary_name', ''))
+          out('binary_rename',  c.get('binary_rename') or c.get('binary_name', ''))
           out('binary_version', c.get('binary_version') or '')
           out('binary_ipk_name', c.get('binary_ipk_name') or c.get('binary_name', ''))
-          out('service_name',  c.get('service_name', ''))
-          out('luci_version',  c.get('luci_version') or '')
-          out('luci_ipk_name', c.get('luci_ipk_name') or f"luci-app-{c.get('service_name','')}")
-          out('description',   c.get('description', ''))
-          out('log_path',      c.get('log_path', '/var/log/service.log'))
+          out('service_name',   c.get('service_name', ''))
+          out('luci_version',   c.get('luci_version') or '')
+          out('luci_ipk_name',  c.get('luci_ipk_name') or f"luci-app-{c.get('service_name','')}")
+          out('description',    c.get('description', ''))
+          out('log_path',       c.get('log_path', '/var/log/service.log'))
 
-          # start_cmd
           sc = c.get('start_cmd', {})
-          out('sc_fixed', sc.get('fixed', 0))
+          out('sc_fixed', '1' if sc.get('fixed') else '0')
           if sc.get('fixed'):
-              require(sc.get('value'), 'start_cmd.value（fixed=1）')
+              require(sc.get('value'), 'start_cmd.value (fixed=1)')
           out('sc_value', sc.get('value') or '')
 
-          # 通用字段处理
           for field in ['web_port', 'working_dir', 'environment', 'exec_pre', 'exec_post']:
-              f = c.get(field, {})
-              enabled = int(f.get('enabled', 0))
-              fixed   = int(f.get('fixed', 0))
-              value   = f.get('value') or ''
+              fd = c.get(field, {})
+              enabled = 1 if fd.get('enabled') else 0
+              fixed   = 1 if fd.get('fixed')   else 0
+              value   = fd.get('value') or ''
               out(f'{field}_enabled', enabled)
               out(f'{field}_fixed',   fixed)
               if enabled and fixed:
-                  require(value, f'{field}.value（enabled=1 fixed=1）')
+                  require(value, f'{field}.value (enabled=1 fixed=1)')
               out(f'{field}_value', value)
+
+          gho.close()
           PYEOF
 
-      # ── 校验（仅打包模式） ─────────────────────────────────
-      - name: Validate binary-only inputs
-        if: inputs.package_type == '仅打包可执行文件'
-        run: |
-          if [ -z "${{ inputs.file_url }}" ]; then
-            echo "::error::file_url 不能为空"
-            exit 1
-          fi
-
-      # ── 下载并提取二进制 ──────────────────────────────────
+      # ── 下载并提取二进制 ────────────────────────────────────
       - name: Download and extract binary
         id: binary
         run: |
@@ -121,21 +108,23 @@ jobs:
               gunzip -c downloaded_file > extracted/binary_file
             fi
           elif echo "$MAGIC" | grep -q '^fd377a585a00'; then
-            tar -xJf downloaded_file -C extracted/ 2>/dev/null || xz -d -c downloaded_file > extracted/binary_file
+            tar -xJf downloaded_file -C extracted/ 2>/dev/null \
+              || xz -d -c downloaded_file > extracted/binary_file
           elif echo "$MAGIC" | grep -q '^7f454c46'; then
             cp downloaded_file extracted/binary_file
           else
-            tar -xf downloaded_file -C extracted/ 2>/dev/null || cp downloaded_file extracted/binary_file
+            tar -xf downloaded_file -C extracted/ 2>/dev/null \
+              || cp downloaded_file extracted/binary_file
           fi
 
-          # 找到可执行文件
           BINARY=$(find extracted/ -type f | while read f; do
-            ft=$(file "$f" | tr '[:upper:]' '[:lower:]')
-            echo "$ft" | grep -qE 'executable|elf' && echo "$f" && break
+            file "$f" | grep -qiE 'executable|elf' && echo "$f" && break
           done)
-          [ -z "$BINARY" ] && BINARY=$(find extracted/ -type f ! -name "*.txt" ! -name "*.md" ! -name "*.json" | xargs ls -S 2>/dev/null | head -1)
+          [ -z "$BINARY" ] && \
+            BINARY=$(find extracted/ -type f \
+              ! -name "*.txt" ! -name "*.md" ! -name "*.json" \
+              | xargs ls -S 2>/dev/null | head -1)
 
-          # 重命名
           if [ "${{ inputs.package_type }}" = "打包可执行文件 + LuCI 界面" ]; then
             RENAME="${{ steps.cfg.outputs.binary_rename }}"
           else
@@ -148,33 +137,33 @@ jobs:
           echo "binary_path=$FINAL_NAME" >> $GITHUB_OUTPUT
           echo "binary_name=$FINAL_NAME" >> $GITHUB_OUTPUT
 
-      # ── 解析版本和名称 ────────────────────────────────────
+      # ── 解析版本和名称 ──────────────────────────────────────
       - name: Resolve versions and names
         id: meta
         run: |
           if [ "${{ inputs.package_type }}" = "打包可执行文件 + LuCI 界面" ]; then
-            BIN_NAME="${{ steps.cfg.outputs.binary_name }}"
             BIN_IPK_NAME="${{ steps.cfg.outputs.binary_ipk_name }}"
             BIN_VERSION="${{ steps.cfg.outputs.binary_version }}"
             LUCI_PKG="${{ steps.cfg.outputs.luci_ipk_name }}"
             LUCI_VERSION="${{ steps.cfg.outputs.luci_version }}"
           else
-            BIN_NAME="${{ steps.binary.outputs.binary_name }}"
             BIN_IPK_NAME="${{ inputs.binary_ipk_name }}"
-            [ -z "$BIN_IPK_NAME" ] && BIN_IPK_NAME="$BIN_NAME"
+            [ -z "$BIN_IPK_NAME" ] && BIN_IPK_NAME="${{ steps.binary.outputs.binary_name }}"
             BIN_VERSION="${{ inputs.binary_version }}"
             LUCI_PKG=""
             LUCI_VERSION=""
           fi
-          [ -z "$BIN_VERSION" ]   && BIN_VERSION="$(shuf -i 1-9 -n1).$(shuf -i 0-9 -n1).$(shuf -i 0-99 -n1)"
-          [ -z "$LUCI_VERSION" ]  && LUCI_VERSION="$(shuf -i 1-9 -n1).$(shuf -i 0-9 -n1)-r$(shuf -i 1-9 -n1)"
 
-          echo "bin_ipk_name=$BIN_IPK_NAME"   >> $GITHUB_OUTPUT
-          echo "bin_version=$BIN_VERSION"       >> $GITHUB_OUTPUT
-          echo "luci_pkg=$LUCI_PKG"             >> $GITHUB_OUTPUT
-          echo "luci_version=$LUCI_VERSION"     >> $GITHUB_OUTPUT
+          rand_ver() { echo "$(shuf -i 1-9 -n1).$(shuf -i 0-9 -n1).$(shuf -i 0-99 -n1)"; }
+          [ -z "$BIN_VERSION" ]  && BIN_VERSION=$(rand_ver)
+          [ -z "$LUCI_VERSION" ] && LUCI_VERSION="$(rand_ver)-r1"
 
-      # ── 打包二进制 IPK ────────────────────────────────────
+          echo "bin_ipk_name=$BIN_IPK_NAME" >> $GITHUB_OUTPUT
+          echo "bin_version=$BIN_VERSION"   >> $GITHUB_OUTPUT
+          echo "luci_pkg=$LUCI_PKG"         >> $GITHUB_OUTPUT
+          echo "luci_version=$LUCI_VERSION" >> $GITHUB_OUTPUT
+
+      # ── 打包二进制 IPK ──────────────────────────────────────
       - name: Build binary IPK
         id: build_bin
         run: |
@@ -189,250 +178,25 @@ jobs:
 
           INSTALLED_SIZE=$(du -sk ipk_bin/data | awk '{print $1}')
           cat > ipk_bin/control/control << EOF
-          Package: $BIN_IPK_NAME
-          Version: $BIN_VERSION
-          Architecture: all
-          Installed-Size: $INSTALLED_SIZE
-          Section: utils
-          Description: $BIN_IPK_NAME binary
-          EOF
-          sed -i 's/^          //' ipk_bin/control/control
+Package: $BIN_IPK_NAME
+Version: $BIN_VERSION
+Architecture: all
+Installed-Size: $INSTALLED_SIZE
+Section: utils
+Description: $BIN_IPK_NAME binary
+EOF
 
           echo "2.0" > debian-binary
           tar --numeric-owner --group=0 --owner=0 -czf control.tar.gz -C ipk_bin/control .
           tar --numeric-owner --group=0 --owner=0 -czf data.tar.gz    -C ipk_bin/data .
-          tar --numeric-owner --group=0 --owner=0 -czf "$IPK_FILE" debian-binary control.tar.gz data.tar.gz
+          tar --numeric-owner --group=0 --owner=0 -czf "$IPK_FILE" \
+            debian-binary control.tar.gz data.tar.gz
 
           echo "ipk_file=$IPK_FILE" >> $GITHUB_OUTPUT
 
-      # ── 构建 LuCI 文件 ────────────────────────────────────
+      # ── 生成 LuCI 文件 ──────────────────────────────────────
       - name: Build LuCI files
         if: inputs.package_type == '打包可执行文件 + LuCI 界面'
-        id: build_luci_files
-        run: |
-          python3 << 'PYEOF'
-          import os, re
-
-          # 从环境变量读取所有 cfg outputs
-          def g(k):
-              return os.environ.get(f'CFG_{k}', os.environ.get(k, ''))
-
-          SERVICE     = os.environ['SERVICE']
-          BINARY      = os.environ['BINARY']
-          DESCRIPTION = os.environ['DESCRIPTION']
-          LOG_PATH    = os.environ['LOG_PATH']
-
-          sc_fixed    = os.environ['SC_FIXED'] == '1'
-          sc_value    = os.environ['SC_VALUE']
-
-          wp_enabled  = os.environ['WP_ENABLED'] == '1'
-          wp_fixed    = os.environ['WP_FIXED'] == '1'
-          wp_value    = os.environ['WP_VALUE']
-
-          wd_enabled  = os.environ['WD_ENABLED'] == '1'
-          wd_fixed    = os.environ['WD_FIXED'] == '1'
-          wd_value    = os.environ['WD_VALUE']
-
-          env_enabled = os.environ['ENV_ENABLED'] == '1'
-          env_fixed   = os.environ['ENV_FIXED'] == '1'
-          env_value   = os.environ['ENV_VALUE']
-
-          pre_enabled = os.environ['PRE_ENABLED'] == '1'
-          pre_fixed   = os.environ['PRE_FIXED'] == '1'
-          pre_value   = os.environ['PRE_VALUE']
-
-          post_enabled = os.environ['POST_ENABLED'] == '1'
-          post_fixed   = os.environ['POST_FIXED'] == '1'
-          post_value   = os.environ['POST_VALUE']
-
-          os.makedirs('luci_build', exist_ok=True)
-
-          # ── init.d ──────────────────────────────────────
-          with open('template/init.d.sh') as f:
-              initd = f.read()
-
-          # START_CMD
-          if sc_fixed:
-              start_cmd_line = f'procd_set_param command /bin/sh -c "{sc_value}"'
-          else:
-              start_cmd_line = f'procd_set_param command /bin/sh -c "$(uci -q get {SERVICE}.config.start_cmd)"'
-          initd = initd.replace('__START_CMD__', start_cmd_line)
-
-          # WORKING_DIR
-          if wd_enabled:
-              if wd_fixed:
-                  wd_line = f'procd_set_param env HOME="{wd_value}"\n    cd "{wd_value}" 2>/dev/null || true'
-              else:
-                  wd_line = f'local work_dir; config_get work_dir config working_dir ""\n    [ -n "$work_dir" ] && cd "$work_dir" 2>/dev/null || true\n    [ -n "$work_dir" ] && procd_set_param env HOME="$work_dir"'
-          else:
-              wd_line = ''
-          initd = initd.replace('    __WORKING_DIR__\n', f'    {wd_line}\n' if wd_line else '')
-
-          # ENVIRONMENT
-          if env_enabled:
-              if env_fixed:
-                  env_lines = '\n'.join(f'    procd_append_param env {e}' for e in env_value.split())
-              else:
-                  env_lines = f'    local env_vars; config_get env_vars config environment ""\n    for e in $env_vars; do procd_append_param env "$e"; done'
-          else:
-              env_lines = ''
-          initd = initd.replace('    __ENVIRONMENT__\n', f'{env_lines}\n' if env_lines else '')
-
-          # EXEC_PRE
-          if pre_enabled:
-              if pre_fixed:
-                  pre_line = pre_value
-              else:
-                  pre_line = f'local exec_pre; config_get exec_pre config exec_pre ""\n    [ -n "$exec_pre" ] && eval "$exec_pre"'
-          else:
-              pre_line = ''
-          initd = initd.replace('    __EXEC_PRE__\n', f'    {pre_line}\n' if pre_line else '')
-
-          # EXEC_POST
-          if post_enabled:
-              if post_fixed:
-                  post_line = post_value
-              else:
-                  post_line = f'    local exec_post; config_get exec_post config exec_post ""\n    [ -n "$exec_post" ] && eval "$exec_post"'
-          else:
-              post_line = '    :'
-          initd = initd.replace('    __EXEC_POST__', post_line)
-
-          initd = initd.replace('__SERVICE__', SERVICE)
-          with open('luci_build/init.d', 'w') as f:
-              f.write(initd)
-
-          # ── uci_config ──────────────────────────────────
-          with open('template/uci_config') as f:
-              uci_cfg = f.read()
-
-          uci_fields = []
-          if not sc_fixed:
-              uci_fields.append(f"\toption start_cmd '/usr/bin/{BINARY}'")
-          if wp_enabled and not wp_fixed:
-              uci_fields.append(f"\toption web_port '{wp_value or ''}'")
-          if wd_enabled and not wd_fixed:
-              uci_fields.append(f"\toption working_dir ''")
-          if env_enabled and not env_fixed:
-              uci_fields.append(f"\toption environment ''")
-          if pre_enabled and not pre_fixed:
-              uci_fields.append(f"\toption exec_pre ''")
-          if post_enabled and not post_fixed:
-              uci_fields.append(f"\toption exec_post ''")
-
-          uci_cfg = uci_cfg.replace('__SERVICE__', SERVICE)
-          uci_cfg = uci_cfg.replace('__UCI_FIELDS__', '\n'.join(uci_fields))
-          with open('luci_build/uci_config', 'w') as f:
-              f.write(uci_cfg)
-
-          # ── menu.json ──────────────────────────────────
-          with open('template/menu.json') as f:
-              menu = f.read()
-          menu = menu.replace('__SERVICE__', SERVICE)
-          with open('luci_build/menu.json', 'w') as f:
-              f.write(menu)
-
-          # ── acl.json ───────────────────────────────────
-          with open('template/acl.json') as f:
-              acl = f.read()
-          acl = acl.replace('__SERVICE__', SERVICE)
-          acl = acl.replace('__BINARY__', BINARY)
-          acl = acl.replace('__LOG_PATH__', LOG_PATH)
-          with open('luci_build/acl.json', 'w') as f:
-              f.write(acl)
-
-          # ── log.js ─────────────────────────────────────
-          with open('template/log.js') as f:
-              log_js = f.read()
-          log_js = log_js.replace('__LOG_PATH__', LOG_PATH)
-          with open('luci_build/log.js', 'w') as f:
-              f.write(log_js)
-
-          # ── main.js ────────────────────────────────────
-          with open('template/main.js') as f:
-              main_js = f.read()
-
-          main_js = main_js.replace('__SERVICE__', SERVICE)
-          main_js = main_js.replace('__DESCRIPTION__', DESCRIPTION)
-
-          # 网页端口 / 打开按钮
-          if wp_enabled:
-              if wp_fixed:
-                  port_val = f"'{wp_value}'"
-                  main_js = main_js.replace('__WEB_PORT_PARAM__', '')
-                  main_js = main_js.replace('__WEB_PORT_ARG__', '')
-                  main_js = main_js.replace('__GET_PORT__', f'var webPort = {port_val};')
-                  main_js = main_js.replace('__POLL_GET_PORT__', f'var webPort = {port_val};')
-              else:
-                  main_js = main_js.replace('__WEB_PORT_PARAM__', ', webPort')
-                  main_js = main_js.replace('__WEB_PORT_ARG__', ', webPort')
-                  main_js = main_js.replace('__GET_PORT__', f"var webPort = uci.get('__SERVICE__', 'config', 'web_port') || '';".replace('__SERVICE__', SERVICE))
-                  main_js = main_js.replace('__POLL_GET_PORT__', f"var webPort = uci.get('__SERVICE__', 'config', 'web_port') || '';".replace('__SERVICE__', SERVICE))
-
-              open_btn = (
-                  "var btnUrl = 'http://' + window.location.hostname + ':' + webPort + '/';\n"
-                  "        var button = '<input class=\"cbi-button-reload\" type=\"button\" "
-                  "style=\"margin-left:50px\" value=\"' + _(\'打开 Web 界面\') + '\" "
-                  "onclick=\"window.open(\\'' + btnUrl + '\\')\">\';"
-              )
-              main_js = main_js.replace('__OPEN_BTN__', open_btn)
-              main_js = main_js.replace('__OPEN_BTN_APPEND__', " + button")
-          else:
-              main_js = main_js.replace('__WEB_PORT_PARAM__', '')
-              main_js = main_js.replace('__WEB_PORT_ARG__', '')
-              main_js = main_js.replace('__GET_PORT__', '')
-              main_js = main_js.replace('__POLL_GET_PORT__', '')
-              main_js = main_js.replace('__OPEN_BTN__\n', '')
-              main_js = main_js.replace('__OPEN_BTN_APPEND__', '')
-
-          # 表单字段
-          form_fields = []
-
-          if not sc_fixed:
-              form_fields.append(
-                  "o = s.option(form.Value, 'start_cmd', '启动命令');\n"
-                  "        o.rmempty = false;\n"
-                  f"        o.placeholder = '/usr/bin/{BINARY}';"
-              )
-
-          if wp_enabled and not wp_fixed:
-              form_fields.append(
-                  "o = s.option(form.Value, 'web_port', '网页端口');\n"
-                  "        o.datatype = 'port';\n"
-                  "        o.rmempty = false;"
-              )
-
-          if wd_enabled and not wd_fixed:
-              form_fields.append(
-                  "o = s.option(form.Value, 'working_dir', '工作目录');\n"
-                  "        o.rmempty = true;"
-              )
-
-          if env_enabled and not env_fixed:
-              form_fields.append(
-                  "o = s.option(form.Value, 'environment', '环境变量');\n"
-                  "        o.placeholder = 'KEY1=val1 KEY2=val2';\n"
-                  "        o.rmempty = true;"
-              )
-
-          if pre_enabled and not pre_fixed:
-              form_fields.append(
-                  "o = s.option(form.Value, 'exec_pre', '启动前执行');\n"
-                  "        o.rmempty = true;"
-              )
-
-          if post_enabled and not post_fixed:
-              form_fields.append(
-                  "o = s.option(form.Value, 'exec_post', '停止后执行');\n"
-                  "        o.rmempty = true;"
-              )
-
-          main_js = main_js.replace('        __FORM_FIELDS__', '\n        '.join(form_fields))
-          with open('luci_build/main.js', 'w') as f:
-              f.write(main_js)
-
-          print("LuCI files generated successfully")
-          PYEOF
         env:
           SERVICE:      ${{ steps.cfg.outputs.service_name }}
           BINARY:       ${{ steps.binary.outputs.binary_name }}
@@ -455,60 +219,190 @@ jobs:
           POST_ENABLED: ${{ steps.cfg.outputs.exec_post_enabled }}
           POST_FIXED:   ${{ steps.cfg.outputs.exec_post_fixed }}
           POST_VALUE:   ${{ steps.cfg.outputs.exec_post_value }}
+        run: |
+          python3 - << 'PYEOF'
+          import os
 
-      # ── 打包 LuCI IPK ─────────────────────────────────────
+          def e(k): return os.environ.get(k, '')
+          def b(k): return e(k) == '1'
+
+          SERVICE      = e('SERVICE')
+          BINARY       = e('BINARY')
+          DESCRIPTION  = e('DESCRIPTION')
+          LOG_PATH     = e('LOG_PATH')
+          sc_fixed     = b('SC_FIXED');   sc_value    = e('SC_VALUE')
+          wp_enabled   = b('WP_ENABLED'); wp_fixed    = b('WP_FIXED'); wp_value = e('WP_VALUE')
+          wd_enabled   = b('WD_ENABLED'); wd_fixed    = b('WD_FIXED'); wd_value = e('WD_VALUE')
+          env_enabled  = b('ENV_ENABLED');env_fixed   = b('ENV_FIXED');env_value= e('ENV_VALUE')
+          pre_enabled  = b('PRE_ENABLED');pre_fixed   = b('PRE_FIXED');pre_value= e('PRE_VALUE')
+          post_enabled = b('POST_ENABLED');post_fixed = b('POST_FIXED');post_value=e('POST_VALUE')
+
+          os.makedirs('luci_build', exist_ok=True)
+
+          # ── init.d ─────────────────────────────────────────
+          with open('template/init.d.sh') as f: initd = f.read()
+
+          # start_cmd
+          if sc_fixed:
+              cmd_line = f'procd_set_param command /bin/sh -c "{sc_value}"'
+          else:
+              cmd_line = f'procd_set_param command /bin/sh -c "$(uci -q get {SERVICE}.config.start_cmd)"'
+          initd = initd.replace('    __START_CMD__', f'    {cmd_line}')
+
+          # working_dir
+          if wd_enabled:
+              if wd_fixed:
+                  wd = f'cd "{wd_value}" 2>/dev/null || true\n    procd_set_param env HOME="{wd_value}"'
+              else:
+                  wd = ('local _wd; config_get _wd config working_dir ""\n'
+                        '    [ -n "$_wd" ] && cd "$_wd" 2>/dev/null\n'
+                        '    [ -n "$_wd" ] && procd_set_param env HOME="$_wd"')
+              initd = initd.replace('    __WORKING_DIR__', f'    {wd}')
+          else:
+              initd = initd.replace('\n    __WORKING_DIR__', '')
+
+          # environment
+          if env_enabled:
+              if env_fixed:
+                  ev = '\n'.join(f'    procd_append_param env {x}' for x in env_value.split())
+              else:
+                  ev = ('local _env; config_get _env config environment ""\n'
+                        '    for _e in $_env; do procd_append_param env "$_e"; done')
+              initd = initd.replace('    __ENVIRONMENT__', f'    {ev}')
+          else:
+              initd = initd.replace('\n    __ENVIRONMENT__', '')
+
+          # exec_pre
+          if pre_enabled:
+              if pre_fixed:
+                  pr = pre_value
+              else:
+                  pr = 'local _pre; config_get _pre config exec_pre ""\n    [ -n "$_pre" ] && eval "$_pre"'
+              initd = initd.replace('    __EXEC_PRE__', f'    {pr}')
+          else:
+              initd = initd.replace('\n    __EXEC_PRE__', '')
+
+          # exec_post
+          if post_enabled:
+              if post_fixed:
+                  po = post_value
+              else:
+                  po = '    local _post; config_get _post config exec_post ""\n    [ -n "$_post" ] && eval "$_post"'
+              initd = initd.replace('    __EXEC_POST__', po)
+          else:
+              initd = initd.replace('    __EXEC_POST__', '    :')
+
+          initd = initd.replace('__SERVICE__', SERVICE)
+          open('luci_build/init.d', 'w').write(initd)
+
+          # ── uci config ─────────────────────────────────────
+          with open('template/uci_config') as f: uci = f.read()
+          fields = []
+          if not sc_fixed:  fields.append(f"\toption start_cmd '/usr/bin/{BINARY}'")
+          if wp_enabled and not wp_fixed: fields.append(f"\toption web_port '{wp_value}'")
+          if wd_enabled and not wd_fixed: fields.append("\toption working_dir ''")
+          if env_enabled and not env_fixed: fields.append("\toption environment ''")
+          if pre_enabled and not pre_fixed: fields.append("\toption exec_pre ''")
+          if post_enabled and not post_fixed: fields.append("\toption exec_post ''")
+          uci = uci.replace('__SERVICE__', SERVICE).replace('__UCI_FIELDS__', '\n'.join(fields))
+          open('luci_build/uci_config', 'w').write(uci)
+
+          # ── menu.json ──────────────────────────────────────
+          with open('template/menu.json') as f: menu = f.read()
+          open('luci_build/menu.json', 'w').write(menu.replace('__SERVICE__', SERVICE))
+
+          # ── acl.json ───────────────────────────────────────
+          with open('template/acl.json') as f: acl = f.read()
+          acl = acl.replace('__SERVICE__', SERVICE).replace('__BINARY__', BINARY).replace('__LOG_PATH__', LOG_PATH)
+          open('luci_build/acl.json', 'w').write(acl)
+
+          # ── log.js ─────────────────────────────────────────
+          with open('template/log.js') as f: log_js = f.read()
+          open('luci_build/log.js', 'w').write(log_js.replace('__LOG_PATH__', LOG_PATH))
+
+          # ── main.js ────────────────────────────────────────
+          with open('template/main.js') as f: main_js = f.read()
+          main_js = main_js.replace('__SERVICE__', SERVICE).replace('__DESCRIPTION__', DESCRIPTION)
+
+          # 打开 Web 界面按钮（端口写在 renderStatus 函数体内）
+          if wp_enabled:
+              port_expr = f"'{wp_value}'" if wp_fixed else f"(uci.get('{SERVICE}', 'config', 'web_port') || '')"
+              open_btn = (
+                  f"var webPort = {port_expr};\n"
+                  "        var btnUrl = 'http://' + window.location.hostname + ':' + webPort + '/';\n"
+                  "        var button = '<input class=\"cbi-button-reload\" type=\"button\" "
+                  "style=\"margin-left:50px\" value=\"' + _('打开 Web 界面') + '\" "
+                  "onclick=\"window.open(\\'' + btnUrl + '\\')\">\';"
+              )
+              main_js = main_js.replace('        __OPEN_BTN__', '        ' + open_btn)
+              main_js = main_js.replace('__OPEN_BTN_APPEND__', ' + button')
+          else:
+              main_js = main_js.replace('\n        __OPEN_BTN__', '')
+              main_js = main_js.replace('__OPEN_BTN_APPEND__', '')
+
+          # 表单字段
+          ff = []
+          if not sc_fixed:
+              ff.append(f"o = s.option(form.Value, 'start_cmd', '启动命令');\n        o.rmempty = false;\n        o.placeholder = '/usr/bin/{BINARY}';")
+          if wp_enabled and not wp_fixed:
+              ff.append("o = s.option(form.Value, 'web_port', '网页端口');\n        o.datatype = 'port';\n        o.rmempty = false;")
+          if wd_enabled and not wd_fixed:
+              ff.append("o = s.option(form.Value, 'working_dir', '工作目录');\n        o.rmempty = true;")
+          if env_enabled and not env_fixed:
+              ff.append("o = s.option(form.Value, 'environment', '环境变量');\n        o.placeholder = 'KEY1=val1 KEY2=val2';\n        o.rmempty = true;")
+          if pre_enabled and not pre_fixed:
+              ff.append("o = s.option(form.Value, 'exec_pre', '启动前执行');\n        o.rmempty = true;")
+          if post_enabled and not post_fixed:
+              ff.append("o = s.option(form.Value, 'exec_post', '停止后执行');\n        o.rmempty = true;")
+
+          main_js = main_js.replace('        __FORM_FIELDS__', ('\n\n        ').join(ff) if ff else '')
+          open('luci_build/main.js', 'w').write(main_js)
+          print("LuCI files generated OK")
+          PYEOF
+
+      # ── 打包 LuCI IPK ───────────────────────────────────────
       - name: Build LuCI IPK
         if: inputs.package_type == '打包可执行文件 + LuCI 界面'
         id: build_luci
         run: |
           SERVICE="${{ steps.cfg.outputs.service_name }}"
-          BINARY="${{ steps.binary.outputs.binary_name }}"
           LUCI_PKG="${{ steps.meta.outputs.luci_pkg }}"
           LUCI_VERSION="${{ steps.meta.outputs.luci_version }}"
           BIN_IPK_NAME="${{ steps.meta.outputs.bin_ipk_name }}"
           LUCI_IPK="${LUCI_PKG}_${LUCI_VERSION}_all.ipk"
 
           mkdir -p luci_ipk/data/etc/{init.d,config,uci-defaults}
-          mkdir -p luci_ipk/data/usr/share/luci/menu.d
-          mkdir -p luci_ipk/data/usr/share/rpcd/acl.d
+          mkdir -p luci_ipk/data/usr/share/{luci/menu.d,rpcd/acl.d}
           mkdir -p luci_ipk/data/www/luci-static/resources/view/${SERVICE}
           mkdir -p luci_ipk/control
 
-          # init.d
-          cp luci_build/init.d    luci_ipk/data/etc/init.d/${SERVICE}
+          cp luci_build/init.d     luci_ipk/data/etc/init.d/${SERVICE}
           chmod +x luci_ipk/data/etc/init.d/${SERVICE}
-
-          # uci config
           cp luci_build/uci_config luci_ipk/data/etc/config/${SERVICE}
 
-          # uci-defaults：开机自启 + 重启 rpcd
           cat > luci_ipk/data/etc/uci-defaults/${LUCI_PKG} << EOF
-          #!/bin/sh
-          /etc/init.d/${SERVICE} enable
-          /etc/init.d/rpcd restart
-          exit 0
-          EOF
-          sed -i 's/^          //' luci_ipk/data/etc/uci-defaults/${LUCI_PKG}
+#!/bin/sh
+/etc/init.d/${SERVICE} enable
+/etc/init.d/rpcd restart
+exit 0
+EOF
           chmod +x luci_ipk/data/etc/uci-defaults/${LUCI_PKG}
 
-          # menu / acl / js
           cp luci_build/menu.json luci_ipk/data/usr/share/luci/menu.d/${LUCI_PKG}.json
           cp luci_build/acl.json  luci_ipk/data/usr/share/rpcd/acl.d/${LUCI_PKG}.json
           cp luci_build/main.js   luci_ipk/data/www/luci-static/resources/view/${SERVICE}/main.js
           cp luci_build/log.js    luci_ipk/data/www/luci-static/resources/view/${SERVICE}/log.js
 
-          # control
           INSTALLED_SIZE=$(du -sk luci_ipk/data | awk '{print $1}')
           cat > luci_ipk/control/control << EOF
-          Package: $LUCI_PKG
-          Version: $LUCI_VERSION
-          Depends: libc, $BIN_IPK_NAME, luci-base, rpcd
-          Architecture: all
-          Installed-Size: $INSTALLED_SIZE
-          Section: luci
-          Description: LuCI interface for $SERVICE
-          EOF
-          sed -i 's/^          //' luci_ipk/control/control
+Package: $LUCI_PKG
+Version: $LUCI_VERSION
+Depends: libc, $BIN_IPK_NAME, luci-base, rpcd
+Architecture: all
+Installed-Size: $INSTALLED_SIZE
+Section: luci
+Description: LuCI interface for $SERVICE
+EOF
 
           echo "2.0" > luci_deb
           tar --numeric-owner --group=0 --owner=0 -czf luci_ctrl.tar.gz -C luci_ipk/control .
@@ -521,7 +415,7 @@ jobs:
 
           echo "luci_ipk_file=$LUCI_IPK" >> $GITHUB_OUTPUT
 
-      # ── 发布 Release ──────────────────────────────────────
+      # ── 发布 Release ────────────────────────────────────────
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
