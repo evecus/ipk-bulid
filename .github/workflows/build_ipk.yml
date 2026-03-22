@@ -184,7 +184,7 @@ jobs:
           Installed-Size: $INSTALLED_SIZE
           Section: utils
           Description: $BIN_IPK_NAME binary
-EOF
+          EOF
 
           echo "2.0" > debian-binary
           tar --numeric-owner --group=0 --owner=0 -czf control.tar.gz -C ipk_bin/control .
