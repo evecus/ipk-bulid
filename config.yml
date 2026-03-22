@@ -1,15 +1,15 @@
 # ── 核心相关 ──────────────────────────────────────────────
-binary_name: alist
-binary_rename: ""          # 留空则不重命名
-binary_version: ""         # 留空则随机生成
+binary_name: sub
+binary_rename: "sub"          # 留空则不重命名
+binary_version: "1.1.1"         # 留空则随机生成
 binary_ipk_name: ""        # 留空则用 binary_name
 
 # ── LuCI 相关 ─────────────────────────────────────────────
-service_name: alist
-luci_version: ""           # 留空则随机生成
-luci_ipk_name: ""          # 留空则用 luci-app-{service_name}
-description: "A file list program"
-log_path: /var/log/alist.log
+service_name: sub
+luci_version: "1.1.1"           # 留空则随机生成
+luci_ipk_name: "luci-app-sub"          # 留空则用 luci-app-{service_name}
+description: "sub"
+log_path: /var/log/sub.log
 
 # ── 字段配置 ──────────────────────────────────────────────
 # 规则：
@@ -21,12 +21,12 @@ log_path: /var/log/alist.log
 
 start_cmd:
   fixed: 1
-  value: "/usr/bin/alist server --data /etc/alist"
+  value: "/usr/bin/sub --path=/1234 --dir /etc/sub"
 
 web_port:
   enabled: 1
   fixed: 1
-  value: "5244"
+  value: "8080"
 
 working_dir:
   enabled: 0
