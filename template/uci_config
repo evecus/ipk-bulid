@@ -1,0 +1,3 @@
+config __SERVICE__ config
+	option enabled '0'
+__UCI_FIELDS__

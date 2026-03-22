@@ -1,0 +1,18 @@
+{
+    "luci-app-__SERVICE__": {
+        "description": "LuCI support for __SERVICE__",
+        "read": {
+            "ubus": {
+                "service": [ "list" ]
+            },
+            "uci": [ "__SERVICE__" ],
+            "file": {
+                "__LOG_PATH__": [ "read" ],
+                "/usr/bin/__BINARY__": [ "exec" ]
+            }
+        },
+        "write": {
+            "uci": [ "__SERVICE__" ]
+        }
+    }
+}
