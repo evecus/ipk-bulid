@@ -75,12 +75,29 @@ on:
           - 'true'
 
       extra_options:
-        description: |
+        description: |-
           补充输入框，对应 start_args 里的 $变量名
           格式: 变量名:默认值:显示标签（空格分隔多个）
           示例: port:3001:端口 backend_path:/sub-store:后端路径 data_dir:/etc/sub-store:数据保存路径
           注意: has_web=true 时网页入口输入框自动生成，不需要在这里定义
           留空则不生成额外输入框
+        required: false
+        default: ''
+        type: string
+
+      run_user:
+        description: |
+          运行用户（procd_set_param user），留空则不设置
+          示例: root
+        required: false
+        default: ''
+        type: string
+
+      run_group:
+        description: |
+          运行用户组（procd_set_param group），留空则不设置
+          注意: 配置 group 时必须同时配置 run_user，单独配置 group 无效
+          示例: bypass
         required: false
         default: ''
         type: string
@@ -107,6 +124,8 @@ jobs:
           INPUT_WORK_DIR:       ${{ github.event.inputs.work_dir }}
           INPUT_ENV_VARS:       ${{ github.event.inputs.env_vars }}
           INPUT_EXTRA_OPTIONS: ${{ github.event.inputs.extra_options }}
+          INPUT_RUN_USER:      ${{ github.event.inputs.run_user }}
+          INPUT_RUN_GROUP:     ${{ github.event.inputs.run_group }}
         run: |
           chmod +x scripts/build.sh
           bash scripts/build.sh
