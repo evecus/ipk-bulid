@@ -18,6 +18,8 @@ web_entry     = os.environ.get('INPUT_WEB_ENTRY', '3001').strip() or '3001'
 extra_options = os.environ.get('INPUT_EXTRA_OPTIONS', '').strip()
 work_dir      = os.environ.get('INPUT_WORK_DIR', '').strip()
 env_vars      = os.environ.get('INPUT_ENV_VARS', 'false').lower() == 'true'
+run_user      = os.environ.get('INPUT_RUN_USER', '').strip()
+run_group     = os.environ.get('INPUT_RUN_GROUP', '').strip()
 
 service_name = pkg_name.replace('luci-app-', '', 1)
 binary_name  = binary.split('/')[-1]
@@ -45,6 +47,19 @@ if env_vars:
 
 # ── WORK_DIR_PROCD（init.d 用）──────────────────────────
 work_dir_procd = ("    procd_set_param chdir '" + work_dir + "'\n") if work_dir else ""
+
+# ── USER_PROCD / GROUP_PROCD（init.d 用）────────────────
+# 规则：
+#   - user 和 group 均为空 → 两者均不设置
+#   - 只有 user          → 只设置 user
+#   - user + group 均有值 → 同时设置两者
+#   - 只有 group 没有 user → 忽略 group（procd 要求 user 先于 group）
+if run_user:
+    user_procd  = f"    procd_set_param user {run_user}\n"
+    group_procd = f"    procd_set_param group {run_group}\n" if run_group else ""
+else:
+    user_procd  = ""
+    group_procd = ""
 
 # ── CONFIG_GETS（init.d 用）──────────────────────────────
 config_gets = ''
@@ -120,6 +135,8 @@ replacements = {
     '{{CONFIG_GETS}}':      config_gets,
     '{{START_ARGS_PROCD}}': start_args_procd,
     '{{WORK_DIR_PROCD}}':   work_dir_procd,
+    '{{USER_PROCD}}':       user_procd,
+    '{{GROUP_PROCD}}':      group_procd,
     '{{ENV_VARS_PROCD}}':   env_vars_procd,
     '{{ENV_VARS_HANDLER}}': env_vars_handler,
     '{{EXTRA_FIELDS}}':     extra_fields + env_vars_field,
