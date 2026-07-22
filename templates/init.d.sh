@@ -17,7 +17,7 @@ PROG="{{BINARY}}"
     [ ! -x "$PROG" ] && logger -t {{SERVICE_NAME}} "binary not found: $PROG" && return 1
 
 {{CONFIG_GETS}}
-    procd_open_instance
+    procd_open_instance "$CONF"
     procd_set_param command "$PROG"{{START_ARGS_PROCD}}
 {{WORK_DIR_PROCD}}{{ENV_VARS_PROCD}}{{USER_PROCD}}{{GROUP_PROCD}}    procd_set_param respawn 3600 5 5
     procd_set_param stdout 1
